@@ -22,7 +22,8 @@ exclude = [
     "examples/*",
     "target/*",
     ".vscode/*",
-    ".idea/*"
+    ".idea/*",
+    ".env*",
 ]
 
 [dependencies]
