@@ -1,4 +1,4 @@
-# SXURL
+# SXURL: Slice eXact URL Identifier ("sixerl")
 
 [![Crates.io](https://img.shields.io/crates/v/sxurl.svg)](https://crates.io/crates/sxurl)
 [![Documentation](https://docs.rs/sxurl/badge.svg)](https://docs.rs/sxurl)
