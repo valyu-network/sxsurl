@@ -48,6 +48,30 @@ let is_rs_tld = matches_component(&sxurl_hex, "tld", "rs")?;
 assert!(is_rs_tld);
 ```
 
+### URL Parsing Utilities
+
+```rust
+use sxurl::{split_url, parse_query, get_anchor, strip_anchor, join_url_path};
+
+// Parse URL into all components at once
+let parts = split_url("https://api.github.com/repos?page=1#readme")?;
+println!("Domain: {}", parts.domain);        // "github"
+println!("Subdomain: {:?}", parts.subdomain); // Some("api")
+println!("Anchor: {:?}", parts.anchor);       // Some("readme")
+
+// Work with query parameters
+let params = parse_query("https://example.com?foo=bar&page=2")?;
+println!("Page: {:?}", params.get("page"));   // Some("2")
+
+// Handle anchors (fragments)
+let anchor = get_anchor("https://docs.rs#search")?; // Some("search")
+let clean_url = strip_anchor("https://example.com#top")?; // "https://example.com"
+
+// Join URLs properly
+let api_url = join_url_path("https://api.example.com/v1", "users")?;
+// Result: "https://api.example.com/v1/users"
+```
+
 ### Database Integration Example
 
 ```rust

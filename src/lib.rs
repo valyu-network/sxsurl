@@ -16,9 +16,9 @@
 //! # Quick Start
 //!
 //! ```
-//! use sxurl::{encode_url_to_hex, decode_hex, matches_component};
+//! use sxurl::{encode_url_to_hex, decode_hex, matches_component, split_url, parse_query};
 //!
-//! // Encode a URL
+//! // Encode a URL to SXURL
 //! let sxurl_hex = encode_url_to_hex("https://docs.rs/sxurl")?;
 //! println!("SXURL: {}", sxurl_hex); // 64 hex characters
 //!
@@ -29,6 +29,15 @@
 //! // Filter by component
 //! let is_rs_tld = matches_component(&sxurl_hex, "tld", "rs")?;
 //! assert!(is_rs_tld);
+//!
+//! // Parse URL into components
+//! let parts = split_url("https://api.github.com/repos?page=1#readme")?;
+//! println!("Domain: {}, Subdomain: {:?}", parts.domain, parts.subdomain);
+//! println!("Anchor: {:?}", parts.anchor);
+//!
+//! // Work with query parameters
+//! let params = parse_query("https://example.com?foo=bar&page=2")?;
+//! println!("Page: {:?}", params.get("page"));
 //! # Ok::<(), sxurl::SxurlError>(())
 //! ```
 //!
@@ -67,6 +76,12 @@ pub use encoder::{encode_url, encode_url_to_hex, SxurlEncoder};
 // Re-export main decoding functions
 pub use decoder::{decode_hex, decode_bytes, matches_component, DecodedSxurl};
 
+// Re-export essential URL utilities
+pub use utils::{
+    split_url, split_domain, parse_query, get_query_value,
+    get_anchor, strip_anchor, join_url_path, is_https, UrlParts
+};
+
 // Re-export public types
 pub use error::SxurlError;
 pub use types::{SxurlHeader, UrlComponents};
@@ -84,8 +99,5 @@ pub mod psl;
 pub mod packer;
 pub mod encoder;
 pub mod decoder;
+pub mod utils;
 
-// Placeholder public functions - will be implemented in later stages
-pub fn placeholder() -> &'static str {
-    "SXURL library - implementation in progress"
-}

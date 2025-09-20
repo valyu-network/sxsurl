@@ -599,5 +599,29 @@ fn main() {
 
     println!("\n===============================");
     println!("Test suite complete!");
-    println!("{}", sxurl::placeholder());
+
+    // Test the new URL utilities
+    println!("\n9. Testing URL parsing utilities:");
+
+    let test_url = "https://api.github.com/repos?page=1&sort=name#readme";
+    println!("  Testing URL: {}", test_url);
+
+    match sxurl::split_url(test_url) {
+        Ok(parts) => {
+            println!("    Domain: {}", parts.domain);
+            println!("    Subdomain: {:?}", parts.subdomain);
+            println!("    Path: {}", parts.path);
+            println!("    Anchor: {:?}", parts.anchor);
+        }
+        Err(e) => println!("    Error: {:?}", e),
+    }
+
+    match sxurl::parse_query(test_url) {
+        Ok(params) => {
+            println!("    Query params: {:?}", params);
+        }
+        Err(e) => println!("    Query error: {:?}", e),
+    }
+
+    println!("\nSXURL library with URL utilities ready for use!");
 }
