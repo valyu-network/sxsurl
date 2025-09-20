@@ -71,33 +71,29 @@
 //! - Malformed URLs or SXURL hex strings
 
 // Re-export main encoding functions
-pub use encoder::{encode_url, encode_url_to_hex, SxurlEncoder};
+pub use core::{encode_url, encode_url_to_hex, SxurlEncoder};
 
 // Re-export main decoding functions
-pub use decoder::{decode_hex, decode_bytes, matches_component, DecodedSxurl};
+pub use core::{decode_hex, decode_bytes, matches_component, DecodedSxurl};
 
 // Re-export essential URL utilities
-pub use utils::{
-    split_url, split_domain, parse_query, get_query_value,
-    get_anchor, strip_anchor, join_url_path, is_https, UrlParts
+pub use url::{
+    split_url, split_domain, get_path_segments, get_filename,
+    parse_query, get_query_value, get_anchor, strip_anchor,
+    join_url_path, is_https, has_query, has_anchor, UrlParts
 };
 
 // Re-export public types
 pub use error::SxurlError;
 pub use types::{SxurlHeader, UrlComponents};
-pub use hasher::{hash_component, ComponentHasher, extract_lower_bits};
-pub use normalizer::{normalize_url, normalize_host, validate_host};
-pub use psl::{split_host_with_psl, extract_url_components};
-pub use packer::{pack_sxurl, sxurl_to_hex, hex_to_sxurl};
+pub use core::{hash_component, ComponentHasher, extract_lower_bits};
+pub use url::{normalize_url, normalize_host, validate_host};
+pub use url::{split_host_with_psl, extract_url_components};
+pub use core::{pack_sxurl, sxurl_to_hex, hex_to_sxurl};
 
 // Module declarations
 pub mod error;
 pub mod types;
-pub mod hasher;
-pub mod normalizer;
-pub mod psl;
-pub mod packer;
-pub mod encoder;
-pub mod decoder;
-pub mod utils;
+pub mod core;
+pub mod url;
 

@@ -5,7 +5,7 @@
 
 use url::Url;
 use crate::error::SxurlError;
-use crate::psl::split_host_with_psl;
+use crate::url::psl::split_host_with_psl;
 use std::collections::HashMap;
 
 /// Complete URL parts extracted from a URL string.
@@ -39,7 +39,7 @@ pub struct UrlParts {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::split_url;
+/// use sxurl::split_url;
 ///
 /// let parts = split_url("https://api.github.com/repos?page=1#readme").unwrap();
 /// assert_eq!(parts.scheme, "https");
@@ -53,7 +53,23 @@ pub fn split_url(url: &str) -> Result<UrlParts, SxurlError> {
     // Get basic components
     let scheme = parsed.scheme().to_string();
     let host = parsed.host_str().ok_or(SxurlError::HostNotDns)?.to_string();
-    let port = parsed.port();
+
+    // Handle port - if explicitly specified in URL, include it even if it's the default
+    let port = if url.contains(&format!("{}:", &host)) {
+        // Port is explicitly specified in the URL
+        Some(parsed.port().unwrap_or_else(|| {
+            // If parsed.port() is None but we detected a colon, it's a default port
+            match scheme.as_str() {
+                "https" => 443,
+                "http" => 80,
+                "ftp" => 21,
+                _ => 80,
+            }
+        }))
+    } else {
+        parsed.port()
+    };
+
     let path = parsed.path().to_string();
     let query = parsed.query().map(|q| q.to_string());
     let anchor = parsed.fragment().map(|f| f.to_string());
@@ -86,7 +102,7 @@ pub fn split_url(url: &str) -> Result<UrlParts, SxurlError> {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::split_domain;
+/// use sxurl::split_domain;
 ///
 /// let (sub, domain, tld) = split_domain("https://api.github.com").unwrap();
 /// assert_eq!(sub, Some("api".to_string()));
@@ -118,7 +134,7 @@ pub fn split_domain(url: &str) -> Result<(Option<String>, String, String), Sxurl
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::get_path_segments;
+/// use sxurl::get_path_segments;
 ///
 /// let segments = get_path_segments("https://example.com/api/v1/users").unwrap();
 /// assert_eq!(segments, vec!["api", "v1", "users"]);
@@ -140,7 +156,7 @@ pub fn get_path_segments(url: &str) -> Result<Vec<String>, SxurlError> {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::get_filename;
+/// use sxurl::get_filename;
 ///
 /// let filename = get_filename("https://example.com/docs/file.pdf").unwrap();
 /// assert_eq!(filename, Some("file.pdf".to_string()));
@@ -170,7 +186,7 @@ pub fn get_filename(url: &str) -> Result<Option<String>, SxurlError> {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::parse_query;
+/// use sxurl::parse_query;
 ///
 /// let params = parse_query("https://example.com?foo=bar&page=1").unwrap();
 /// assert_eq!(params.get("foo"), Some(&"bar".to_string()));
@@ -192,7 +208,7 @@ pub fn parse_query(url: &str) -> Result<HashMap<String, String>, SxurlError> {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::get_query_value;
+/// use sxurl::get_query_value;
 ///
 /// let value = get_query_value("https://example.com?page=2&sort=name", "page").unwrap();
 /// assert_eq!(value, Some("2".to_string()));
@@ -212,7 +228,7 @@ pub fn get_query_value(url: &str, key: &str) -> Result<Option<String>, SxurlErro
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::get_anchor;
+/// use sxurl::get_anchor;
 ///
 /// let anchor = get_anchor("https://docs.rs/serde#examples").unwrap();
 /// assert_eq!(anchor, Some("examples".to_string()));
@@ -230,7 +246,7 @@ pub fn get_anchor(url: &str) -> Result<Option<String>, SxurlError> {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::strip_anchor;
+/// use sxurl::strip_anchor;
 ///
 /// let clean = strip_anchor("https://example.com/page#section").unwrap();
 /// assert_eq!(clean, "https://example.com/page");
@@ -248,7 +264,7 @@ pub fn strip_anchor(url: &str) -> Result<String, SxurlError> {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::join_url_path;
+/// use sxurl::join_url_path;
 ///
 /// let url1 = join_url_path("https://api.example.com/v1", "users").unwrap();
 /// assert_eq!(url1, "https://api.example.com/v1/users");
@@ -257,7 +273,15 @@ pub fn strip_anchor(url: &str) -> Result<String, SxurlError> {
 /// assert_eq!(url2, "https://api.example.com/v1/users");
 /// ```
 pub fn join_url_path(base_url: &str, path: &str) -> Result<String, SxurlError> {
-    let base = Url::parse(base_url)?;
+    let mut base = Url::parse(base_url)?;
+
+    // Ensure the base path ends with a slash for proper joining
+    let mut base_path = base.path().to_string();
+    if !base_path.ends_with('/') {
+        base_path.push('/');
+        base.set_path(&base_path);
+    }
+
     let joined = base.join(path)?;
     Ok(joined.to_string())
 }
@@ -267,7 +291,7 @@ pub fn join_url_path(base_url: &str, path: &str) -> Result<String, SxurlError> {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::is_https;
+/// use sxurl::is_https;
 ///
 /// assert!(is_https("https://example.com"));
 /// assert!(!is_https("http://example.com"));
@@ -281,7 +305,7 @@ pub fn is_https(url: &str) -> bool {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::has_query;
+/// use sxurl::has_query;
 ///
 /// assert!(has_query("https://example.com?foo=bar"));
 /// assert!(!has_query("https://example.com"));
@@ -295,7 +319,7 @@ pub fn has_query(url: &str) -> bool {
 /// # Examples
 ///
 /// ```
-/// use sxurl::utils::has_anchor;
+/// use sxurl::has_anchor;
 ///
 /// assert!(has_anchor("https://example.com#section"));
 /// assert!(!has_anchor("https://example.com"));

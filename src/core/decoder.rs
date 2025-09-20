@@ -5,7 +5,7 @@
 
 use crate::error::SxurlError;
 use crate::types::SxurlHeader;
-use crate::packer::hex_to_sxurl;
+use crate::core::packer::hex_to_sxurl;
 
 /// Decoded SXURL information.
 ///
@@ -208,7 +208,7 @@ pub fn decode_bytes(sxurl_bytes: &[u8; 32]) -> Result<DecodedSxurl, SxurlError> 
 /// assert!(is_rs_tld);
 /// ```
 pub fn matches_component(sxurl_hex: &str, component: &str, value: &str) -> Result<bool, SxurlError> {
-    use crate::hasher::ComponentHasher;
+    use crate::core::hasher::ComponentHasher;
 
     let decoded = decode_hex(sxurl_hex)?;
 
@@ -258,7 +258,7 @@ pub fn matches_component(sxurl_hex: &str, component: &str, value: &str) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoder::encode_url_to_hex;
+    use crate::core::encoder::encode_url_to_hex;
 
     #[test]
     fn test_decode_basic() {

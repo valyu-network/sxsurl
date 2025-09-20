@@ -2,8 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/sxurl.svg)](https://crates.io/crates/sxurl)
 [![Documentation](https://docs.rs/sxurl/badge.svg)](https://docs.rs/sxurl)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
-[![Build Status](https://github.com/yourusername/sxurl/workflows/CI/badge.svg)](https://github.com/yourusername/sxurl/actions)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](#license)
+[![Build Status](https://github.com/hjpithadia/sxurl/workflows/CI/badge.svg)](https://github.com/hjpithadia/sxurl/actions)
 
 **SXURL** (pronounced "Sixerl") is a fixed-length, sliceable URL identifier system designed for efficient database storage and querying. It converts URLs into deterministic 256-bit identifiers where each URL component occupies a fixed position, enabling fast substring-based filtering and indexing.
 
@@ -336,16 +336,11 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release history.
 
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
+Licensed under the Apache License, Version 2.0 ([LICENSE](LICENSE) or http://www.apache.org/licenses/LICENSE-2.0).
 
 ### Contribution
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be licensed under the Apache License, Version 2.0, without any additional terms or conditions.
 
 ---
 

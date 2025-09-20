@@ -5,7 +5,7 @@
 
 use crate::error::SxurlError;
 use crate::types::UrlComponents;
-use crate::hasher::ComponentHasher;
+use crate::core::hasher::ComponentHasher;
 
 /// Pack URL components into a 256-bit SXURL identifier.
 ///

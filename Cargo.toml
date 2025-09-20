@@ -1,16 +1,29 @@
 [package]
 name = "sxurl"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 authors = ["Valyu", "Hirsh Pithadia"]
 description = "Fixed-length, sliceable URL identifier system for efficient database storage and querying"
 documentation = "https://docs.rs/sxurl"
 repository = "https://github.com/hjpithadia/sxurl"
-homepage = "https://github.com/yourusername/sxurl"
-license = "MIT OR Apache-2.0"
+homepage = "https://github.com/hjpithadia/sxurl"
+license = "Apache-2.0"
 readme = "README.md"
 keywords = ["url", "hashing", "database", "indexing", "identifier"]
 categories = ["encoding", "database", "web-programming"]
+
+# Files to exclude from the published package
+exclude = [
+    "CLAUDE.md",
+    "SXURL.md",
+    "SXURL-SPEC.md",
+    ".github/*",
+    "docs/*",
+    "examples/*",
+    "target/*",
+    ".vscode/*",
+    ".idea/*"
+]
 
 [dependencies]
 url = "2.5"

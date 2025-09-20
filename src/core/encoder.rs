@@ -3,9 +3,9 @@
 //! This module provides the main API for encoding URLs into SXURL format.
 
 use crate::error::SxurlError;
-use crate::normalizer::normalize_url;
-use crate::psl::extract_url_components;
-use crate::packer::{pack_sxurl, sxurl_to_hex};
+use crate::url::normalizer::normalize_url;
+use crate::url::psl::extract_url_components;
+use crate::core::packer::{pack_sxurl, sxurl_to_hex};
 
 /// Encode a URL string into SXURL format.
 ///
