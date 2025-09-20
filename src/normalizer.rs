@@ -11,8 +11,26 @@ use crate::error::SxurlError;
 /// 3. Validates host format and length constraints
 /// 4. Leaves path, query, and fragment as raw bytes (no normalization)
 pub fn normalize_url(url_str: &str) -> Result<Url, SxurlError> {
+    // Reject obviously malformed URLs with empty hosts
+    if url_str.contains("://") {
+        let parts: Vec<&str> = url_str.splitn(2, "://").collect();
+        if parts.len() == 2 {
+            let after_scheme = parts[1];
+            // Check if there's nothing or only slashes/paths after ://
+            if after_scheme.is_empty() || after_scheme.starts_with('/') {
+                return Err(SxurlError::HostNotDns);
+            }
+        }
+    }
+
     // Parse the URL first
     let url = Url::parse(url_str)?;
+
+    // Check for missing or empty host explicitly
+    let host_str = match url.host_str() {
+        Some(host) if !host.is_empty() => host,
+        _ => return Err(SxurlError::HostNotDns),
+    };
 
     // Validate scheme early
     match url.scheme() {
@@ -21,48 +39,44 @@ pub fn normalize_url(url_str: &str) -> Result<Url, SxurlError> {
     }
 
     // Get the host and normalize it
-    if let Some(host_str) = url.host_str() {
-        let normalized_host = normalize_host(host_str)?;
+    let normalized_host = normalize_host(host_str)?;
 
-        // Reconstruct URL with normalized host
-        let mut reconstructed = String::new();
-        reconstructed.push_str(url.scheme());
-        reconstructed.push_str("://");
+    // Reconstruct URL with normalized host
+    let mut reconstructed = String::new();
+    reconstructed.push_str(url.scheme());
+    reconstructed.push_str("://");
 
-        let username = url.username();
-        if !username.is_empty() {
-            reconstructed.push_str(username);
-            if let Some(password) = url.password() {
-                reconstructed.push(':');
-                reconstructed.push_str(password);
-            }
-            reconstructed.push('@');
-        }
-
-        reconstructed.push_str(&normalized_host);
-
-        if let Some(port) = url.port() {
+    let username = url.username();
+    if !username.is_empty() {
+        reconstructed.push_str(username);
+        if let Some(password) = url.password() {
             reconstructed.push(':');
-            reconstructed.push_str(&port.to_string());
+            reconstructed.push_str(password);
         }
-
-        reconstructed.push_str(url.path());
-
-        if let Some(query) = url.query() {
-            reconstructed.push('?');
-            reconstructed.push_str(query);
-        }
-
-        if let Some(fragment) = url.fragment() {
-            reconstructed.push('#');
-            reconstructed.push_str(fragment);
-        }
-
-        // Parse the reconstructed URL
-        Ok(Url::parse(&reconstructed)?)
-    } else {
-        Err(SxurlError::HostNotDns)
+        reconstructed.push('@');
     }
+
+    reconstructed.push_str(&normalized_host);
+
+    if let Some(port) = url.port() {
+        reconstructed.push(':');
+        reconstructed.push_str(&port.to_string());
+    }
+
+    reconstructed.push_str(url.path());
+
+    if let Some(query) = url.query() {
+        reconstructed.push('?');
+        reconstructed.push_str(query);
+    }
+
+    if let Some(fragment) = url.fragment() {
+        reconstructed.push('#');
+        reconstructed.push_str(fragment);
+    }
+
+    // Parse the reconstructed URL
+    Ok(Url::parse(&reconstructed)?)
 }
 
 /// Normalize a hostname according to SXURL requirements.
@@ -96,6 +110,16 @@ pub fn validate_host(host: &str) -> Result<(), SxurlError> {
 
     if host.is_empty() {
         return Err(SxurlError::InvalidLabel("Empty hostname".to_string()));
+    }
+
+    // Reject IP addresses - SXURL only supports DNS names
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return Err(SxurlError::HostNotDns);
+    }
+
+    // Reject IPv6 addresses (contain colons)
+    if host.contains(':') {
+        return Err(SxurlError::HostNotDns);
     }
 
     // Split into labels and validate each

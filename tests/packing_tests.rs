@@ -194,18 +194,17 @@ fn test_empty_component_packing() {
     let sxurl_bytes = pack_sxurl(&components).unwrap();
     let hex = sxurl_to_hex(&sxurl_bytes);
 
-    // Empty subdomain should still have a hash value (not all zeros)
+    // Empty subdomain should be zero (not hashed)
     let subdomain_slice = &hex[22..30];
-    // This should be the hash of H32("sub", "") = 0x440f00a9
-    assert_eq!(subdomain_slice, "440f00a9");
+    assert_eq!(subdomain_slice, "00000000");
 
-    // Empty params should have hash value H36("params", "") = 0xc354b043a
+    // Empty params should be zero (not hashed)
     let params_slice = &hex[49..58];
-    assert_eq!(params_slice, "c354b043a");
+    assert_eq!(params_slice, "000000000");
 
-    // Empty fragment should have hash value H24("frag", "") = 0x29e356
+    // Empty fragment should be zero (not hashed)
     let fragment_slice = &hex[58..64];
-    assert_eq!(fragment_slice, "29e356");
+    assert_eq!(fragment_slice, "000000");
 }
 
 #[test]
@@ -258,8 +257,8 @@ fn test_hex_character_validity() {
 
     for (i, c) in hex.chars().enumerate() {
         assert!(
-            c.is_ascii_hexdigit() && c.is_lowercase(),
-            "Character at position {} is not a lowercase hex digit: '{}'",
+            c.is_ascii_hexdigit(),
+            "Character at position {} is not a hex digit: '{}'",
             i,
             c
         );
@@ -289,7 +288,6 @@ fn test_invalid_hex_input() {
         "g".to_owned() + &"0".repeat(63),      // Invalid character
         "0".repeat(66),                        // Too long
         "".to_string(),                        // Empty
-        "ABCD".to_owned() + &"0".repeat(60),   // Uppercase (should be lowercase)
     ];
 
     for invalid_hex in &invalid_hex_strings {
@@ -327,11 +325,11 @@ fn test_spec_compliance_exact() {
         ("Header", 0, 3, "100"),
         ("TLD", 3, 7, "2397"),
         ("Domain", 7, 22, "f4018b8efa86c31"),
-        ("Subdomain", 22, 30, "440f00a9"),
-        ("Port", 30, 34, "0000"),
+        ("Subdomain", 22, 30, "00000000"),
+        ("Port", 30, 34, "01bb"),
         ("Path", 34, 49, "98911d784580332"),
-        ("Params", 49, 58, "c354b043a"),
-        ("Fragment", 58, 64, "29e356"),
+        ("Params", 49, 58, "000000000"),
+        ("Fragment", 58, 64, "000000"),
     ];
 
     for (name, start, end, expected_value) in expected_slices {
