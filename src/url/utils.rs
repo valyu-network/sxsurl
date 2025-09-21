@@ -5,6 +5,7 @@
 
 use url::Url;
 use crate::error::SxurlError;
+use crate::types::UrlComponentType;
 use crate::url::psl::split_host_with_psl;
 use std::collections::HashMap;
 
@@ -328,9 +329,154 @@ pub fn has_anchor(url: &str) -> bool {
     url.contains('#')
 }
 
+/// Extract a specific component from a URL.
+///
+/// This is a unified interface for extracting any URL component using an enum.
+/// It internally uses `split_url()` and extracts the requested component.
+///
+/// # Arguments
+///
+/// * `url` - The URL to parse
+/// * `component` - The component type to extract
+///
+/// # Returns
+///
+/// Returns the requested component as a string, or `None` if the component
+/// is not present in the URL (e.g., no subdomain, no query, etc.).
+///
+/// # Examples
+///
+/// ```
+/// use sxurl::{get_url_component, UrlComponentType};
+///
+/// let url = "https://api.github.com:443/repos?page=1#readme";
+///
+/// let scheme = get_url_component(url, UrlComponentType::Scheme).unwrap();
+/// assert_eq!(scheme, Some("https".to_string()));
+///
+/// let domain = get_url_component(url, UrlComponentType::Domain).unwrap();
+/// assert_eq!(domain, Some("github".to_string()));
+///
+/// let subdomain = get_url_component(url, UrlComponentType::Subdomain).unwrap();
+/// assert_eq!(subdomain, Some("api".to_string()));
+///
+/// let port = get_url_component(url, UrlComponentType::Port).unwrap();
+/// assert_eq!(port, Some("443".to_string()));
+/// ```
+pub fn get_url_component(url: &str, component: UrlComponentType) -> Result<Option<String>, SxurlError> {
+    let parts = split_url(url)?;
+
+    match component {
+        UrlComponentType::Scheme => Ok(Some(parts.scheme)),
+        UrlComponentType::Host => Ok(Some(parts.host)),
+        UrlComponentType::Domain => Ok(Some(parts.domain)),
+        UrlComponentType::Subdomain => Ok(parts.subdomain),
+        UrlComponentType::Tld => Ok(Some(parts.tld)),
+        UrlComponentType::Port => Ok(parts.port.map(|p| p.to_string())),
+        UrlComponentType::Path => Ok(Some(parts.path)),
+        UrlComponentType::Query => Ok(parts.query),
+        UrlComponentType::Fragment => Ok(parts.anchor),
+        UrlComponentType::PathSegments => {
+            let segments = get_path_segments(url)?;
+            if segments.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(segments.join(",")))
+            }
+        }
+        UrlComponentType::Filename => get_filename(url),
+    }
+}
+
+/// Remove a specific component from a URL.
+///
+/// This function removes the specified component from the URL and returns
+/// the modified URL string. Some components cannot be removed (scheme, host, domain, tld)
+/// as they would result in an invalid URL.
+///
+/// # Arguments
+///
+/// * `url` - The URL to modify
+/// * `component` - The component type to remove
+///
+/// # Returns
+///
+/// Returns the modified URL string with the component removed.
+///
+/// # Examples
+///
+/// ```
+/// use sxurl::{strip_url_component, UrlComponentType};
+///
+/// let clean = strip_url_component("https://api.github.com:443/repos?page=1#readme",
+///                                 UrlComponentType::Query).unwrap();
+/// assert_eq!(clean, "https://api.github.com/repos#readme");
+///
+/// let no_anchor = strip_url_component("https://example.com/page#section",
+///                                     UrlComponentType::Fragment).unwrap();
+/// assert_eq!(no_anchor, "https://example.com/page");
+/// ```
+pub fn strip_url_component(url: &str, component: UrlComponentType) -> Result<String, SxurlError> {
+    let mut parsed = Url::parse(url)?;
+
+    match component {
+        UrlComponentType::Scheme => {
+            return Err(SxurlError::ParseError("Cannot remove scheme from URL".to_string()));
+        }
+        UrlComponentType::Host | UrlComponentType::Domain | UrlComponentType::Tld => {
+            return Err(SxurlError::ParseError("Cannot remove host/domain/tld from URL".to_string()));
+        }
+        UrlComponentType::Subdomain => {
+            // Get current host and try to remove subdomain
+            let parts = split_url(url)?;
+            if parts.subdomain.is_some() {
+                let new_host = format!("{}.{}", parts.domain, parts.tld);
+                parsed.set_host(Some(&new_host))?;
+            }
+        }
+        UrlComponentType::Port => {
+            parsed.set_port(None).map_err(|_| SxurlError::ParseError("Failed to remove port".to_string()))?;
+        }
+        UrlComponentType::Path => {
+            parsed.set_path("/");
+        }
+        UrlComponentType::Query => {
+            parsed.set_query(None);
+        }
+        UrlComponentType::Fragment => {
+            parsed.set_fragment(None);
+        }
+        UrlComponentType::PathSegments => {
+            // Remove all path segments, keeping just "/"
+            parsed.set_path("/");
+        }
+        UrlComponentType::Filename => {
+            // Remove filename from path but keep directory structure
+            let segments = get_path_segments(url)?;
+            if !segments.is_empty() {
+                // Check if last segment is a filename (has extension or is single segment)
+                let last = segments.last().unwrap();
+                if last.contains('.') || segments.len() == 1 {
+                    // Remove the filename
+                    let dir_segments = &segments[..segments.len() - 1];
+                    let new_path = if dir_segments.is_empty() {
+                        "/".to_string()
+                    } else {
+                        format!("/{}/", dir_segments.join("/"))
+                    };
+                    parsed.set_path(&new_path);
+                }
+            }
+        }
+    }
+
+    Ok(parsed.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::UrlComponentType;
 
     #[test]
     fn test_split_url_complete() {
@@ -449,5 +595,147 @@ mod tests {
 
         assert!(has_anchor("https://example.com#section"));
         assert!(!has_anchor("https://example.com"));
+    }
+
+    #[test]
+    fn test_get_url_component() {
+        let url = "https://api.github.com:443/repos?page=1#readme";
+
+        // Test basic components
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Scheme).unwrap(),
+            Some("https".to_string())
+        );
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Host).unwrap(),
+            Some("api.github.com".to_string())
+        );
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Domain).unwrap(),
+            Some("github".to_string())
+        );
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Subdomain).unwrap(),
+            Some("api".to_string())
+        );
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Tld).unwrap(),
+            Some("com".to_string())
+        );
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Port).unwrap(),
+            Some("443".to_string())
+        );
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Path).unwrap(),
+            Some("/repos".to_string())
+        );
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Query).unwrap(),
+            Some("page=1".to_string())
+        );
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Fragment).unwrap(),
+            Some("readme".to_string())
+        );
+
+        // Test URL without optional components
+        let simple_url = "https://example.com/";
+        assert_eq!(
+            get_url_component(simple_url, UrlComponentType::Subdomain).unwrap(),
+            None
+        );
+        assert_eq!(
+            get_url_component(simple_url, UrlComponentType::Port).unwrap(),
+            None
+        );
+        assert_eq!(
+            get_url_component(simple_url, UrlComponentType::Query).unwrap(),
+            None
+        );
+        assert_eq!(
+            get_url_component(simple_url, UrlComponentType::Fragment).unwrap(),
+            None
+        );
+
+        // Test path segments
+        let path_url = "https://example.com/api/v1/users";
+        assert_eq!(
+            get_url_component(path_url, UrlComponentType::PathSegments).unwrap(),
+            Some("api,v1,users".to_string())
+        );
+
+        // Test filename
+        let file_url = "https://example.com/docs/manual.pdf";
+        assert_eq!(
+            get_url_component(file_url, UrlComponentType::Filename).unwrap(),
+            Some("manual.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_strip_url_component() {
+        let url = "https://api.github.com:443/repos?page=1#readme";
+
+        // Test removing query
+        let no_query = strip_url_component(url, UrlComponentType::Query).unwrap();
+        assert_eq!(no_query, "https://api.github.com/repos#readme");
+
+        // Test removing fragment
+        let no_fragment = strip_url_component(url, UrlComponentType::Fragment).unwrap();
+        assert_eq!(no_fragment, "https://api.github.com/repos?page=1");
+
+        // Test removing port
+        let no_port = strip_url_component(url, UrlComponentType::Port).unwrap();
+        assert_eq!(no_port, "https://api.github.com/repos?page=1#readme");
+
+        // Test removing path
+        let no_path = strip_url_component(url, UrlComponentType::Path).unwrap();
+        assert_eq!(no_path, "https://api.github.com/?page=1#readme");
+
+        // Test removing subdomain
+        let no_subdomain = strip_url_component(url, UrlComponentType::Subdomain).unwrap();
+        assert_eq!(no_subdomain, "https://github.com/repos?page=1#readme");
+
+        // Test removing filename
+        let file_url = "https://example.com/docs/manual.pdf";
+        let no_filename = strip_url_component(file_url, UrlComponentType::Filename).unwrap();
+        assert_eq!(no_filename, "https://example.com/docs/");
+
+        // Test error cases - cannot remove essential components
+        assert!(strip_url_component(url, UrlComponentType::Scheme).is_err());
+        assert!(strip_url_component(url, UrlComponentType::Host).is_err());
+        assert!(strip_url_component(url, UrlComponentType::Domain).is_err());
+        assert!(strip_url_component(url, UrlComponentType::Tld).is_err());
+    }
+
+    #[test]
+    fn test_component_functions_consistency() {
+        let url = "https://api.github.com:443/repos?page=1#readme";
+
+        // Verify that get_url_component returns the same as individual functions
+        assert_eq!(
+            get_url_component(url, UrlComponentType::Fragment).unwrap(),
+            get_anchor(url).unwrap()
+        );
+
+        // Verify query component extraction matches
+        let query_component = get_url_component(url, UrlComponentType::Query).unwrap();
+        let parsed_query = parse_query(url).unwrap();
+        assert_eq!(query_component, Some("page=1".to_string()));
+        assert_eq!(parsed_query.get("page"), Some(&"1".to_string()));
+
+        let expected_segments = get_path_segments(url).unwrap();
+        let expected_segments_str: Vec<&str> = expected_segments.iter().map(|s| s.as_str()).collect();
+        let actual_segments_str = get_url_component(url, UrlComponentType::PathSegments).unwrap().unwrap();
+        let actual_segments: Vec<&str> = actual_segments_str.split(',').collect();
+        assert_eq!(actual_segments, expected_segments_str);
+
+        // Test that stripping and checking work together
+        let no_anchor = strip_url_component(url, UrlComponentType::Fragment).unwrap();
+        assert_eq!(
+            get_url_component(&no_anchor, UrlComponentType::Fragment).unwrap(),
+            None
+        );
     }
 }

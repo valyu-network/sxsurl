@@ -153,6 +153,33 @@ impl UrlComponents {
     }
 }
 
+/// Enum for specifying which URL component to extract or manipulate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UrlComponentType {
+    /// URL scheme (https, http, ftp)
+    Scheme,
+    /// Full hostname (api.example.com)
+    Host,
+    /// Domain name only (example)
+    Domain,
+    /// Subdomain if present (api)
+    Subdomain,
+    /// Top-level domain (com, org, co.uk)
+    Tld,
+    /// Port number
+    Port,
+    /// Path component (/api/v1/users)
+    Path,
+    /// Query string (foo=bar&baz=qux)
+    Query,
+    /// Fragment/anchor (section1)
+    Fragment,
+    /// Path segments as vector (["api", "v1", "users"])
+    PathSegments,
+    /// Filename from path (file.pdf)
+    Filename,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

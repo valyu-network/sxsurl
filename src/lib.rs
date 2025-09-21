@@ -80,16 +80,18 @@ pub use core::{decode_hex, decode_bytes, matches_component, DecodedSxurl};
 pub use url::{
     split_url, split_domain, get_path_segments, get_filename,
     parse_query, get_query_value, get_anchor, strip_anchor,
-    join_url_path, is_https, has_query, has_anchor, UrlParts
+    join_url_path, is_https, has_query, has_anchor, UrlParts,
+    get_url_component, strip_url_component
 };
 
 // Re-export public types
 pub use error::SxurlError;
-pub use types::{SxurlHeader, UrlComponents};
+pub use types::{SxurlHeader, UrlComponents, UrlComponentType};
 pub use core::{hash_component, ComponentHasher, extract_lower_bits};
 pub use url::{normalize_url, normalize_host, validate_host};
 pub use url::{split_host_with_psl, extract_url_components};
 pub use core::{pack_sxurl, sxurl_to_hex, hex_to_sxurl};
+pub use core::{sxurl_contains, sxurl_has_domain, sxurl_has_subdomain, sxurl_has_tld};
 
 // Module declarations
 pub mod error;

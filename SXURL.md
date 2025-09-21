@@ -7,6 +7,7 @@
 ## Table of Contents
 
 **Part I: Understanding SXURL**
+=
 1. [What is SXURL](#1-what-is-sxurl)
 2. [Core Architecture](#2-core-architecture)
 3. [Design Rationale](#3-design-rationale)

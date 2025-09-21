@@ -91,12 +91,15 @@ fn split_host_fallback(host: &str) -> Result<(String, String, String), SxurlErro
 }
 
 /// Create URL components from a normalized URL.
+///
+/// This function uses the PSL parsing for host splitting but maintains
+/// the original port behavior to avoid breaking existing encoder/decoder logic.
 pub fn extract_url_components(url: &url::Url) -> Result<crate::types::UrlComponents, SxurlError> {
-    // Get the host and split it
+    // Get the host and split it using PSL
     let host = url.host_str().ok_or(SxurlError::HostNotDns)?;
     let (tld, domain, subdomain) = split_host_with_psl(host)?;
 
-    // Extract other components
+    // Extract other components using original logic
     let scheme = url.scheme().to_string();
     let port = url.port().unwrap_or_else(|| {
         match url.scheme() {
