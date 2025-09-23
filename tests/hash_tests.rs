@@ -3,16 +3,17 @@
 use sxurl::*;
 use sha2::{Sha256, Digest};
 
+
 #[test]
 fn test_hash_extraction_methods() {
     // Test hash extraction with known SHA256 values
     let test_cases = vec![
-        ("tld\x00rs", 16, 0x2397),
-        ("domain\x00docs", 60, 0xf4018b8efa86c31),
-        ("sub\x00", 32, 0x440f00a9),
-        ("path\x00/", 60, 0x98911d784580332),
-        ("params\x00", 36, 0xc354b043a),
-        ("frag\x00", 24, 0x29e356),
+        ("tld\x00rs", 28, 0x4817c7e), // Updated to corrected values
+        ("domain\x00docs", 60, 0x16ca8efb818406f),
+        ("sub\x00", 32, 0xa2921b44),
+        ("path\x00/", 52, 0x35884d71189f9), // Updated to 52-bit path
+        ("params\x00", 32, 0x1c6130c3), // Updated to 32-bit params
+        ("frag\x00", 20, 0x676a0), // Updated to 20-bit fragment
     ];
 
     for (input, bits, expected) in test_cases {
@@ -57,21 +58,21 @@ fn test_hash_endianness() {
         0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,
     ];
 
-    // Extract from the end in big-endian order
+    // Extract using corrected little-endian method
     let result_16 = extract_lower_bits(&test_hash, 16).unwrap();
-    assert_eq!(result_16, 0xEEFF); // Last 2 bytes: EE FF
+    assert_eq!(result_16, 0x9988); // Last 8 bytes as LE u64, 16-bit mask
 
     let result_32 = extract_lower_bits(&test_hash, 32).unwrap();
-    assert_eq!(result_32, 0xCCDDEEFF); // Last 4 bytes: CC DD EE FF
+    assert_eq!(result_32, 0xBBAA9988); // Last 8 bytes as LE u64, 32-bit mask
 }
 
 #[test]
 fn test_component_hasher_determinism() {
     // Test that component hashers are deterministic
     for _ in 0..10 {
-        assert_eq!(ComponentHasher::hash_tld("rs").unwrap(), 0x2397);
-        assert_eq!(ComponentHasher::hash_domain("docs").unwrap(), 0xf4018b8efa86c31);
-        assert_eq!(ComponentHasher::hash_subdomain("").unwrap(), 0x440f00a9);
+        assert_eq!(ComponentHasher::hash_tld("rs").unwrap(), 0x4817c7e);
+        assert_eq!(ComponentHasher::hash_domain("docs").unwrap(), 0x16ca8efb818406f);
+        assert_eq!(ComponentHasher::hash_subdomain("").unwrap(), 0xa2921b44);
     }
 }
 
@@ -88,9 +89,9 @@ fn test_manual_hash_calculation() {
     let expected_hash = "a015df3b1d0e2e1091a8f9a4d87025c8e1874e0660b2030d7e7c81c4bd512397";
     assert_eq!(hex::encode(&hash), expected_hash);
 
-    // Extract lower 16 bits: last 2 bytes 23 97 = 0x2397
-    let lower_16 = extract_lower_bits(&hash, 16).unwrap();
-    assert_eq!(lower_16, 0x2397);
+    // Extract lower 28 bits using corrected method (last 8 bytes, little-endian)
+    let lower_28 = extract_lower_bits(&hash, 28).unwrap();
+    assert_eq!(lower_28, 0x4817c7e);
 }
 
 #[test]
@@ -104,12 +105,12 @@ fn test_all_spec_hash_values() {
     }
 
     let test_cases = [
-        TestCase { label: "tld", data: "rs", bits: 16, expected: 0x2397 },
-        TestCase { label: "domain", data: "docs", bits: 60, expected: 0xf4018b8efa86c31 },
-        TestCase { label: "sub", data: "", bits: 32, expected: 0x440f00a9 },
-        TestCase { label: "path", data: "/", bits: 60, expected: 0x98911d784580332 },
-        TestCase { label: "params", data: "", bits: 36, expected: 0xc354b043a },
-        TestCase { label: "frag", data: "", bits: 24, expected: 0x29e356 },
+        TestCase { label: "tld", data: "rs", bits: 28, expected: 0x4817c7e },
+        TestCase { label: "domain", data: "docs", bits: 60, expected: 0x16ca8efb818406f },
+        TestCase { label: "sub", data: "", bits: 32, expected: 0xa2921b44 },
+        TestCase { label: "path", data: "/", bits: 52, expected: 0x35884d71189f9 },
+        TestCase { label: "params", data: "", bits: 32, expected: 0x1c6130c3 },
+        TestCase { label: "frag", data: "", bits: 20, expected: 0x676a0 },
     ];
 
     for test_case in &test_cases {
@@ -134,10 +135,10 @@ fn test_empty_string_hashes() {
     let empty_params = ComponentHasher::hash_params("").unwrap();
     let empty_frag = ComponentHasher::hash_fragment("").unwrap();
 
-    // These should be the specific values from the spec
-    assert_eq!(empty_sub, 0x440f00a9);
-    assert_eq!(empty_params, 0xc354b043a);
-    assert_eq!(empty_frag, 0x29e356);
+    // These should be the corrected values with fixed hash extraction
+    assert_eq!(empty_sub, 0xa2921b44);
+    assert_eq!(empty_params, 0x1c6130c3); // 32-bit hash in v2
+    assert_eq!(empty_frag, 0x676a0); // 20-bit hash in v2
 
     // They should be different from each other (different labels)
     assert_ne!(empty_sub, empty_params);

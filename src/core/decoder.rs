@@ -32,39 +32,39 @@ pub struct DecodedSxurl {
 }
 
 impl DecodedSxurl {
-    /// Get the hex slice for the TLD hash.
+    /// Get the hex slice for the TLD hash (v2: 28 bits = 7 hex chars).
     pub fn tld_hex_slice(&self) -> String {
-        format!("{:04x}", self.tld_hash)
+        format!("{:07x}", self.tld_hash)
     }
 
-    /// Get the hex slice for the domain hash.
+    /// Get the hex slice for the domain hash (v2: 60 bits = 15 hex chars).
     pub fn domain_hex_slice(&self) -> String {
         format!("{:015x}", self.domain_hash)
     }
 
-    /// Get the hex slice for the subdomain hash.
+    /// Get the hex slice for the subdomain hash (v2: 32 bits = 8 hex chars).
     pub fn subdomain_hex_slice(&self) -> String {
         format!("{:08x}", self.subdomain_hash)
     }
 
-    /// Get the hex slice for the port.
+    /// Get the hex slice for the port (v2: 16 bits = 4 hex chars).
     pub fn port_hex_slice(&self) -> String {
         format!("{:04x}", self.port)
     }
 
-    /// Get the hex slice for the path hash.
+    /// Get the hex slice for the path hash (v2: 52 bits = 13 hex chars).
     pub fn path_hex_slice(&self) -> String {
-        format!("{:015x}", self.path_hash)
+        format!("{:013x}", self.path_hash)
     }
 
-    /// Get the hex slice for the params hash.
+    /// Get the hex slice for the params hash (v2: 32 bits = 8 hex chars).
     pub fn params_hex_slice(&self) -> String {
-        format!("{:09x}", self.params_hash)
+        format!("{:08x}", self.params_hash)
     }
 
-    /// Get the hex slice for the fragment hash.
+    /// Get the hex slice for the fragment hash (v2: 20 bits = 5 hex chars).
     pub fn fragment_hex_slice(&self) -> String {
-        format!("{:06x}", self.fragment_hash)
+        format!("{:05x}", self.fragment_hash)
     }
 }
 
@@ -105,29 +105,21 @@ pub fn decode_bytes(sxurl_bytes: &[u8; 32]) -> Result<DecodedSxurl, SxurlError> 
     // Convert back to hex for easier parsing (since we built it with hex)
     let hex_str = hex::encode(sxurl_bytes);
 
-    // Parse each component from the hex string according to SXURL spec positions
-    // header: [0..3) (3 hex chars = 12 bits)
-    // tld_h: [3..7) (4 hex chars = 16 bits)
-    // domain_h: [7..22) (15 hex chars = 60 bits)
-    // sub_h: [22..30) (8 hex chars = 32 bits)
-    // port: [30..34) (4 hex chars = 16 bits)
-    // path_h: [34..49) (15 hex chars = 60 bits)
-    // params_h: [49..58) (9 hex chars = 36 bits)
-    // frag_h: [58..64) (6 hex chars = 24 bits)
+    // Parse each component from the hex string according to v2 SXURL positions
+    // scheme: [0:1) (1 hex char = 4 bits)
+    // reserved: [1:2) (1 hex char = 4 bits)
+    // tld_h: [2:9) (7 hex chars = 28 bits)
+    // domain_h: [9:24) (15 hex chars = 60 bits)
+    // sub_h: [24:32) (8 hex chars = 32 bits)
+    // flags: [32:34) (2 hex chars = 8 bits)
+    // port: [34:38) (4 hex chars = 16 bits)
+    // path_h: [38:51) (13 hex chars = 52 bits)
+    // query_h: [51:59) (8 hex chars = 32 bits)
+    // frag_h: [59:64) (5 hex chars = 20 bits)
 
-    // Parse header (12 bits)
-    let header_hex = &hex_str[0..3];
-    let header_value = u16::from_str_radix(header_hex, 16)
+    // Parse scheme (4 bits)
+    let scheme_code = u8::from_str_radix(&hex_str[0..1], 16)
         .map_err(|_| SxurlError::InvalidHexCharacter)?;
-
-    // Extract version (bits 8-11, top 4 bits)
-    let version = (header_value >> 8) & 0xF;
-    if version != 1 {
-        return Err(SxurlError::UnsupportedVersion(version));
-    }
-
-    // Extract scheme (bits 5-7, 3 bits)
-    let scheme_code = (header_value >> 5) & 0x7;
     let scheme = match scheme_code {
         0 => "https".to_string(),
         1 => "http".to_string(),
@@ -135,41 +127,50 @@ pub fn decode_bytes(sxurl_bytes: &[u8; 32]) -> Result<DecodedSxurl, SxurlError> 
         _ => return Err(SxurlError::InvalidScheme),
     };
 
-    // Extract flags (bits 0-4, 5 bits)
-    let flags = header_value & 0x1F;
-    let sub_present = (flags & (1 << 4)) != 0;
-    let params_present = (flags & (1 << 3)) != 0;
-    let frag_present = (flags & (1 << 2)) != 0;
-    let port_present = (flags & (1 << 1)) != 0;
+    // Parse reserved (should be 0)
+    let reserved = u8::from_str_radix(&hex_str[1..2], 16)
+        .map_err(|_| SxurlError::InvalidHexCharacter)?;
+    if reserved != 0 {
+        return Err(SxurlError::InternalError); // Reserved bits should be 0
+    }
+
+    // Parse flags (8 bits) - moved to position [32:34)
+    let flags = u8::from_str_radix(&hex_str[32..34], 16)
+        .map_err(|_| SxurlError::InvalidHexCharacter)?;
+    let sub_present = (flags & (1 << 7)) != 0;
+    let port_present = (flags & (1 << 6)) != 0;
+    let path_present = (flags & (1 << 5)) != 0;
+    let params_present = (flags & (1 << 4)) != 0;
+    let frag_present = (flags & (1 << 3)) != 0;
 
     let header = SxurlHeader::new(scheme, sub_present, params_present, frag_present, port_present);
 
-    // Parse TLD hash (16 bits)
-    let tld_hash = u64::from_str_radix(&hex_str[3..7], 16)
+    // Parse TLD hash (28 bits) - now at position [2:9)
+    let tld_hash = u64::from_str_radix(&hex_str[2..9], 16)
         .map_err(|_| SxurlError::InvalidHexCharacter)?;
 
-    // Parse domain hash (60 bits)
-    let domain_hash = u64::from_str_radix(&hex_str[7..22], 16)
+    // Parse domain hash (60 bits) - now at position [9:24)
+    let domain_hash = u64::from_str_radix(&hex_str[9..24], 16)
         .map_err(|_| SxurlError::InvalidHexCharacter)?;
 
-    // Parse subdomain hash (32 bits)
-    let subdomain_hash = u64::from_str_radix(&hex_str[22..30], 16)
+    // Parse subdomain hash (32 bits) - now at position [24:32)
+    let subdomain_hash = u64::from_str_radix(&hex_str[24..32], 16)
         .map_err(|_| SxurlError::InvalidHexCharacter)?;
 
-    // Parse port (16 bits)
-    let port = u16::from_str_radix(&hex_str[30..34], 16)
+    // Parse port (16 bits) - now at position [34:38)
+    let port = u16::from_str_radix(&hex_str[34..38], 16)
         .map_err(|_| SxurlError::InvalidHexCharacter)?;
 
-    // Parse path hash (60 bits)
-    let path_hash = u64::from_str_radix(&hex_str[34..49], 16)
+    // Parse path hash (52 bits) - now at position [38:51)
+    let path_hash = u64::from_str_radix(&hex_str[38..51], 16)
         .map_err(|_| SxurlError::InvalidHexCharacter)?;
 
-    // Parse params hash (36 bits)
-    let params_hash = u64::from_str_radix(&hex_str[49..58], 16)
+    // Parse query hash (32 bits) - now at position [51:59)
+    let params_hash = u64::from_str_radix(&hex_str[51..59], 16)
         .map_err(|_| SxurlError::InvalidHexCharacter)?;
 
-    // Parse fragment hash (24 bits)
-    let fragment_hash = u64::from_str_radix(&hex_str[58..64], 16)
+    // Parse fragment hash (20 bits) - now at position [59:64)
+    let fragment_hash = u64::from_str_radix(&hex_str[59..64], 16)
         .map_err(|_| SxurlError::InvalidHexCharacter)?;
 
     Ok(DecodedSxurl {
@@ -267,7 +268,6 @@ mod tests {
         let hex = encode_url_to_hex(url).unwrap();
         let decoded = decode_hex(&hex).unwrap();
 
-        assert_eq!(decoded.header.version, 1);
         assert_eq!(decoded.header.scheme, "https");
         assert!(!decoded.header.sub_present);
         assert!(!decoded.header.params_present);
@@ -295,14 +295,14 @@ mod tests {
         let hex = encode_url_to_hex(url).unwrap();
         let decoded = decode_hex(&hex).unwrap();
 
-        // Test that hex slices have correct lengths
-        assert_eq!(decoded.tld_hex_slice().len(), 4);
-        assert_eq!(decoded.domain_hex_slice().len(), 15);
-        assert_eq!(decoded.subdomain_hex_slice().len(), 8);
-        assert_eq!(decoded.port_hex_slice().len(), 4);
-        assert_eq!(decoded.path_hex_slice().len(), 15);
-        assert_eq!(decoded.params_hex_slice().len(), 9);
-        assert_eq!(decoded.fragment_hex_slice().len(), 6);
+        // Test that hex slices have correct v2 lengths
+        assert_eq!(decoded.tld_hex_slice().len(), 7);  // v2: 28 bits = 7 hex chars
+        assert_eq!(decoded.domain_hex_slice().len(), 15); // same: 60 bits = 15 hex chars
+        assert_eq!(decoded.subdomain_hex_slice().len(), 8); // same: 32 bits = 8 hex chars
+        assert_eq!(decoded.port_hex_slice().len(), 4);  // same: 16 bits = 4 hex chars
+        assert_eq!(decoded.path_hex_slice().len(), 13); // v2: 52 bits = 13 hex chars
+        assert_eq!(decoded.params_hex_slice().len(), 8); // v2: 32 bits = 8 hex chars
+        assert_eq!(decoded.fragment_hex_slice().len(), 5); // v2: 20 bits = 5 hex chars
     }
 
     #[test]

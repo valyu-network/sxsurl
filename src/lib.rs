@@ -71,7 +71,11 @@
 //! - Malformed URLs or SXURL hex strings
 
 // Re-export main encoding functions
-pub use core::{encode_url, encode_url_to_hex, SxurlEncoder};
+pub use core::{
+    encode_url, encode_url_to_hex, encode_host_to_hex,
+    extract_host_from_full_sxurl, extract_host_from_full_bytes,
+    SxurlEncoder
+};
 
 // Re-export main decoding functions
 pub use core::{decode_hex, decode_bytes, matches_component, DecodedSxurl};

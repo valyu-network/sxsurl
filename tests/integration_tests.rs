@@ -6,13 +6,13 @@ use sxurl::*;
 
 #[test]
 fn test_spec_hash_vectors() {
-    // Test all hash vectors from the SXURL spec
-    assert_eq!(ComponentHasher::hash_tld("rs").unwrap(), 0x2397);
-    assert_eq!(ComponentHasher::hash_domain("docs").unwrap(), 0xf4018b8efa86c31);
-    assert_eq!(ComponentHasher::hash_subdomain("").unwrap(), 0x440f00a9);
-    assert_eq!(ComponentHasher::hash_path("/").unwrap(), 0x98911d784580332);
-    assert_eq!(ComponentHasher::hash_params("").unwrap(), 0xc354b043a);
-    assert_eq!(ComponentHasher::hash_fragment("").unwrap(), 0x29e356);
+    // Test all hash vectors for v2 spec with corrected hash extraction
+    assert_eq!(ComponentHasher::hash_tld("rs").unwrap(), 0x4817c7e); // 28-bit
+    assert_eq!(ComponentHasher::hash_domain("docs").unwrap(), 0x16ca8efb818406f); // 60-bit
+    assert_eq!(ComponentHasher::hash_subdomain("").unwrap(), 0xa2921b44); // 32-bit
+    assert_eq!(ComponentHasher::hash_path("/").unwrap(), 0x35884d71189f9); // 52-bit (v2)
+    assert_eq!(ComponentHasher::hash_params("").unwrap(), 0x1c6130c3); // 32-bit (v2)
+    assert_eq!(ComponentHasher::hash_fragment("").unwrap(), 0x676a0); // 20-bit (v2)
 }
 
 #[test]
@@ -24,7 +24,7 @@ fn test_docs_rs_complete_sxurl() {
     let sxurl_bytes = pack_sxurl(&components).unwrap();
     let hex = sxurl_to_hex(&sxurl_bytes);
 
-    let expected = "1002397f4018b8efa86c310000000001bb98911d784580332000000000000000";
+    let expected = "004817c7e16ca8efb818406f000000000001bb35884d71189f90000000000000"; // v2 format with corrected hash extraction
     assert_eq!(hex, expected);
 }
 
@@ -37,28 +37,29 @@ fn test_header_construction() {
     let sxurl_bytes = pack_sxurl(&components).unwrap();
     let hex = sxurl_to_hex(&sxurl_bytes);
 
-    // Header should be "100" (version=1, scheme=https(0), flags=0)
-    assert_eq!(&hex[0..3], "100");
+    // In v2: scheme should be "0" (https) and reserved should be "0"
+    assert_eq!(&hex[0..2], "00"); // scheme=0 (https), reserved=0
 }
 
 #[test]
 fn test_header_with_flags() {
-    // Test header with various flags set
+    // Test v2 format with flags at position [32:34] and scheme at [0:1]
     let test_cases = vec![
-        ("https://api.example.com/", "110"),           // subdomain present
-        ("https://example.com/search?q=test", "108"),  // params present
-        ("https://example.com/#results", "104"),       // fragment present
-        ("https://example.com:8443/", "102"),          // port present
-        ("http://api.example.com:8080/search?q=test#results", "13e"), // all flags + http
+        ("https://api.example.com/", "0", "80"),           // https, subdomain flag (bit 7)
+        ("https://example.com/search?q=test", "0", "30"),  // https, path flag (bit 5) + params flag (bit 4)
+        ("https://example.com/#results", "0", "08"),       // https, fragment flag (bit 3)
+        ("https://example.com:8443/", "0", "40"),          // https, port flag (bit 6)
+        ("http://api.example.com:8080/search?q=test#results", "1", "f8"), // http, all flags
     ];
 
-    for (url, expected_header) in test_cases {
+    for (url, expected_scheme, expected_flags) in test_cases {
         let normalized = normalize_url(url).unwrap();
         let components = extract_url_components(&normalized).unwrap();
         let sxurl_bytes = pack_sxurl(&components).unwrap();
         let hex = sxurl_to_hex(&sxurl_bytes);
 
-        assert_eq!(&hex[0..3], expected_header, "Failed for URL: {}", url);
+        assert_eq!(&hex[0..1], expected_scheme, "Scheme mismatch for URL: {}", url);
+        assert_eq!(&hex[32..34], expected_flags, "Flags mismatch for URL: {}", url);
     }
 }
 
@@ -114,11 +115,11 @@ fn test_port_handling() {
 
         assert_eq!(components.port, expected_port);
 
-        // Check if port flag is set correctly in the SXURL
+        // Check if port flag is set correctly in the SXURL (v2 format)
         let sxurl_bytes = pack_sxurl(&components).unwrap();
         let hex = sxurl_to_hex(&sxurl_bytes);
-        let header_bits = u16::from_str_radix(&hex[0..3], 16).unwrap();
-        let port_present = (header_bits & (1 << 1)) != 0;
+        let flags = u8::from_str_radix(&hex[32..34], 16).unwrap();
+        let port_present = (flags & (1 << 6)) != 0; // bit 6 for port in v2
 
         assert_eq!(port_present, port_flag_should_be_set, "Port flag mismatch for {}", url);
     }
@@ -210,7 +211,7 @@ fn test_encoder_api() {
     // Test hex function
     let sxurl_hex = encode_url_to_hex(url).unwrap();
     assert_eq!(sxurl_hex.len(), 64);
-    assert_eq!(sxurl_hex, "1002397f4018b8efa86c310000000001bb98911d784580332000000000000000");
+    assert_eq!(sxurl_hex, "004817c7e16ca8efb818406f000000000001bb35884d71189f90000000000000"); // v2 format
 
     // Test encoder struct
     let encoder = SxurlEncoder::new();
@@ -353,8 +354,8 @@ fn test_spec_compliance() {
     let url = "https://docs.rs/";
     let sxurl = encode_url_to_hex(url).unwrap();
 
-    // This is the corrected value based on our implementation
-    let spec_expected = "1002397f4018b8efa86c310000000001bb98911d784580332000000000000000";
+    // This is the v2 spec value with corrected hash extraction
+    let spec_expected = "004817c7e16ca8efb818406f000000000001bb35884d71189f90000000000000";
 
-    assert_eq!(sxurl, spec_expected, "Implementation must match SXURL spec exactly");
+    assert_eq!(sxurl, spec_expected, "Implementation must match SXURL v2 spec exactly");
 }

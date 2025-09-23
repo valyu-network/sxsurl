@@ -6,7 +6,6 @@
 use crate::core::decoder::decode_hex;
 use crate::error::SxurlError;
 use crate::types::UrlComponentType;
-use crate::url::utils::split_url;
 
 /// Check if a SXURL contains a specific component value.
 ///
@@ -26,131 +25,133 @@ use crate::url::utils::split_url;
 ///
 /// # Examples
 ///
-/// ```should_panic
+/// ```
 /// use sxurl::{encode_url_to_hex, sxurl_contains, UrlComponentType};
 ///
 /// // First encode a URL to get an SXURL
 /// let sxurl = encode_url_to_hex("https://api.github.com/repos").unwrap();
 ///
-/// // This will panic as URL reconstruction is not yet implemented
-/// sxurl_contains(&sxurl, UrlComponentType::Domain, "github").unwrap();
+/// // Check if the SXURL contains specific components
+/// assert!(sxurl_contains(&sxurl, UrlComponentType::Domain, "github").unwrap());
+/// assert!(sxurl_contains(&sxurl, UrlComponentType::Scheme, "https").unwrap());
+/// assert!(!sxurl_contains(&sxurl, UrlComponentType::Domain, "google").unwrap());
 /// ```
 pub fn sxurl_contains(
     sxurl_hex: &str,
     component: UrlComponentType,
     value: &str,
 ) -> Result<bool, SxurlError> {
+    use crate::core::hasher::ComponentHasher;
+
     // Decode the SXURL to get component information
     let decoded = decode_hex(sxurl_hex)?;
 
-    // For efficient matching, we can check some components using hash comparison
-    // For now, we'll use URL reconstruction approach for correctness
-    let reconstructed_url = reconstruct_url_from_decoded(&decoded)?;
-
-    // Parse the reconstructed URL using our utils
-    let parts = split_url(&reconstructed_url)?;
-
-    // Check the specific component
+    // Use direct hash comparison for components that can be hashed
     match component {
-        UrlComponentType::Scheme => Ok(parts.scheme == value),
-        UrlComponentType::Host => Ok(parts.host == value),
-        UrlComponentType::Domain => Ok(parts.domain == value),
+        UrlComponentType::Scheme => {
+            Ok(decoded.header.scheme == value)
+        }
+        UrlComponentType::Tld => {
+            let expected_hash = ComponentHasher::hash_tld(value)?;
+            Ok(decoded.tld_hash == expected_hash)
+        }
+        UrlComponentType::Domain => {
+            let expected_hash = ComponentHasher::hash_domain(value)?;
+            Ok(decoded.domain_hash == expected_hash)
+        }
         UrlComponentType::Subdomain => {
-            Ok(parts.subdomain.as_ref().map(|s| s == value).unwrap_or(false))
+            if value.is_empty() {
+                Ok(decoded.subdomain_hash == 0)
+            } else {
+                let expected_hash = ComponentHasher::hash_subdomain(value)?;
+                Ok(decoded.subdomain_hash == expected_hash)
+            }
         }
-        UrlComponentType::Tld => Ok(parts.tld == value),
         UrlComponentType::Port => {
-            Ok(parts.port.map(|p| p.to_string() == value).unwrap_or(false))
+            if let Ok(port_num) = value.parse::<u16>() {
+                Ok(decoded.port == port_num)
+            } else {
+                Ok(false)
+            }
         }
-        UrlComponentType::Path => Ok(parts.path == value),
+        UrlComponentType::Path => {
+            let expected_hash = ComponentHasher::hash_path(value)?;
+            Ok(decoded.path_hash == expected_hash)
+        }
         UrlComponentType::Query => {
-            Ok(parts.query.as_ref().map(|q| q == value).unwrap_or(false))
+            if value.is_empty() {
+                Ok(decoded.params_hash == 0)
+            } else {
+                let expected_hash = ComponentHasher::hash_params(value)?;
+                Ok(decoded.params_hash == expected_hash)
+            }
         }
         UrlComponentType::Fragment => {
-            Ok(parts.anchor.as_ref().map(|f| f == value).unwrap_or(false))
+            if value.is_empty() {
+                Ok(decoded.fragment_hash == 0)
+            } else {
+                let expected_hash = ComponentHasher::hash_fragment(value)?;
+                Ok(decoded.fragment_hash == expected_hash)
+            }
+        }
+        // These components require more complex logic - not supported for now
+        UrlComponentType::Host => {
+            Err(SxurlError::ParseError("Host matching not supported - use Domain + Subdomain instead".to_string()))
         }
         UrlComponentType::PathSegments => {
-            let segments: Vec<&str> = value.split(',').collect();
-            let url_segments = crate::url::utils::get_path_segments(&reconstructed_url)?;
-            Ok(url_segments == segments)
+            Err(SxurlError::ParseError("PathSegments matching not supported - use Path instead".to_string()))
         }
         UrlComponentType::Filename => {
-            let filename = crate::url::utils::get_filename(&reconstructed_url)?;
-            Ok(filename.as_ref().map(|f| f == value).unwrap_or(false))
+            Err(SxurlError::ParseError("Filename matching not supported - use Path instead".to_string()))
         }
     }
 }
 
-/// Reconstruct a URL from decoded SXURL information.
-///
-/// This is a helper function that attempts to reconstruct the original URL
-/// from the decoded SXURL components. This is used internally by the matcher
-/// functions.
-///
-/// Note: This may not be able to reconstruct the exact original URL, but
-/// should produce a functionally equivalent URL for component matching.
-fn reconstruct_url_from_decoded(_decoded: &crate::core::decoder::DecodedSxurl) -> Result<String, SxurlError> {
-    // For now, we'll use a placeholder approach
-    // In a full implementation, this would involve more sophisticated reconstruction
-    // based on the hash values and flags in the decoded SXURL
-
-    // This is a simplified reconstruction - in practice, you'd need more sophisticated
-    // reverse engineering of the original URL from the hash components
-    Err(SxurlError::ParseError(
-        "URL reconstruction from SXURL not yet fully implemented".to_string()
-    ))
-}
-
-/// Check if a SXURL contains a domain (exact match).
-///
-/// This is a convenience function for checking domain matches.
+/// Check if a SXURL contains a specific domain.
 ///
 /// # Examples
 ///
-/// ```should_panic
+/// ```
 /// use sxurl::{encode_url_to_hex, sxurl_has_domain};
 ///
-/// let sxurl = encode_url_to_hex("https://github.com/user/repo").unwrap();
-/// // This will panic as URL reconstruction is not yet implemented
-/// sxurl_has_domain(&sxurl, "github").unwrap();
+/// let sxurl = encode_url_to_hex("https://api.github.com/repos").unwrap();
+/// assert!(sxurl_has_domain(&sxurl, "github").unwrap());
+/// assert!(!sxurl_has_domain(&sxurl, "google").unwrap());
 /// ```
 pub fn sxurl_has_domain(sxurl_hex: &str, domain: &str) -> Result<bool, SxurlError> {
     sxurl_contains(sxurl_hex, UrlComponentType::Domain, domain)
 }
 
-/// Check if a SXURL contains a subdomain (exact match).
-///
-/// This is a convenience function for checking subdomain matches.
+/// Check if a SXURL contains a specific subdomain.
 ///
 /// # Examples
 ///
-/// ```should_panic
+/// ```
 /// use sxurl::{encode_url_to_hex, sxurl_has_subdomain};
 ///
-/// let sxurl = encode_url_to_hex("https://api.github.com/user/repo").unwrap();
-/// // This will panic as URL reconstruction is not yet implemented
-/// sxurl_has_subdomain(&sxurl, "api").unwrap();
+/// let sxurl = encode_url_to_hex("https://api.github.com/repos").unwrap();
+/// assert!(sxurl_has_subdomain(&sxurl, "api").unwrap());
+/// assert!(!sxurl_has_subdomain(&sxurl, "www").unwrap());
 /// ```
 pub fn sxurl_has_subdomain(sxurl_hex: &str, subdomain: &str) -> Result<bool, SxurlError> {
     sxurl_contains(sxurl_hex, UrlComponentType::Subdomain, subdomain)
 }
 
-/// Check if a SXURL contains a TLD (exact match).
-///
-/// This is a convenience function for checking TLD matches.
+/// Check if a SXURL contains a specific TLD.
 ///
 /// # Examples
 ///
-/// ```should_panic
+/// ```
 /// use sxurl::{encode_url_to_hex, sxurl_has_tld};
 ///
-/// let sxurl = encode_url_to_hex("https://example.org/page").unwrap();
-/// // This will panic as URL reconstruction is not yet implemented
-/// sxurl_has_tld(&sxurl, "org").unwrap();
+/// let sxurl = encode_url_to_hex("https://docs.rs/sxurl").unwrap();
+/// assert!(sxurl_has_tld(&sxurl, "rs").unwrap());
+/// assert!(!sxurl_has_tld(&sxurl, "com").unwrap());
 /// ```
 pub fn sxurl_has_tld(sxurl_hex: &str, tld: &str) -> Result<bool, SxurlError> {
     sxurl_contains(sxurl_hex, UrlComponentType::Tld, tld)
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -172,12 +173,26 @@ mod tests {
     }
 
     #[test]
-    fn test_sxurl_contains_placeholder() {
-        // Test that the function exists and returns appropriate error
-        let test_url = "https://example.com";
+    fn test_sxurl_contains_working() {
+        // Test that the function works correctly with hash comparison
+        let test_url = "https://api.github.com/repos?page=1#section";
         let sxurl = encode_url_to_hex(test_url).unwrap();
 
-        let result = sxurl_contains(&sxurl, UrlComponentType::Domain, "example");
-        assert!(result.is_err());
+        // Test positive matches
+        assert!(sxurl_contains(&sxurl, UrlComponentType::Scheme, "https").unwrap());
+        assert!(sxurl_contains(&sxurl, UrlComponentType::Domain, "github").unwrap());
+        assert!(sxurl_contains(&sxurl, UrlComponentType::Subdomain, "api").unwrap());
+        assert!(sxurl_contains(&sxurl, UrlComponentType::Tld, "com").unwrap());
+        assert!(sxurl_contains(&sxurl, UrlComponentType::Path, "/repos").unwrap());
+        assert!(sxurl_contains(&sxurl, UrlComponentType::Query, "page=1").unwrap());
+        assert!(sxurl_contains(&sxurl, UrlComponentType::Fragment, "section").unwrap());
+
+        // Test negative matches
+        assert!(!sxurl_contains(&sxurl, UrlComponentType::Scheme, "http").unwrap());
+        assert!(!sxurl_contains(&sxurl, UrlComponentType::Domain, "google").unwrap());
+        assert!(!sxurl_contains(&sxurl, UrlComponentType::Subdomain, "www").unwrap());
+        assert!(!sxurl_contains(&sxurl, UrlComponentType::Tld, "org").unwrap());
+
+        println!("✓ SXURL component matching works correctly!");
     }
 }

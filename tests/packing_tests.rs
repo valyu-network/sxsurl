@@ -21,7 +21,7 @@ fn test_header_packing() {
             has_params: false,
             has_fragment: false,
             has_custom_port: false,
-            expected_header: "100", // version=1, scheme=0, flags=0
+            expected_header: "00", // v2: scheme=0, reserved=0
         },
         TestCase {
             scheme: "http",
@@ -29,7 +29,7 @@ fn test_header_packing() {
             has_params: false,
             has_fragment: false,
             has_custom_port: false,
-            expected_header: "120", // version=1, scheme=1, flags=0
+            expected_header: "10", // v2: scheme=1, reserved=0
         },
         TestCase {
             scheme: "ftp",
@@ -37,7 +37,7 @@ fn test_header_packing() {
             has_params: false,
             has_fragment: false,
             has_custom_port: false,
-            expected_header: "140", // version=1, scheme=2, flags=0
+            expected_header: "20", // v2: scheme=2, reserved=0
         },
         TestCase {
             scheme: "https",
@@ -45,7 +45,7 @@ fn test_header_packing() {
             has_params: false,
             has_fragment: false,
             has_custom_port: false,
-            expected_header: "110", // version=1, scheme=0, flags=16 (subdomain flag)
+            expected_header: "00", // v2: scheme=0, reserved=0 (flags are at [32:34])
         },
         TestCase {
             scheme: "https",
@@ -53,7 +53,7 @@ fn test_header_packing() {
             has_params: true,
             has_fragment: false,
             has_custom_port: false,
-            expected_header: "108", // version=1, scheme=0, flags=8 (params flag)
+            expected_header: "00", // v2: scheme=0, reserved=0 (flags are at [32:34])
         },
         TestCase {
             scheme: "https",
@@ -61,7 +61,7 @@ fn test_header_packing() {
             has_params: false,
             has_fragment: true,
             has_custom_port: false,
-            expected_header: "104", // version=1, scheme=0, flags=4 (fragment flag)
+            expected_header: "00", // v2: scheme=0, reserved=0 (flags are at [32:34])
         },
         TestCase {
             scheme: "https",
@@ -69,7 +69,7 @@ fn test_header_packing() {
             has_params: false,
             has_fragment: false,
             has_custom_port: true,
-            expected_header: "102", // version=1, scheme=0, flags=2 (port flag)
+            expected_header: "00", // v2: scheme=0, reserved=0 (flags are at [32:34])
         },
     ];
 
@@ -100,12 +100,12 @@ fn test_header_packing() {
         let hex = sxurl_to_hex(&sxurl_bytes);
 
         assert_eq!(
-            &hex[0..3],
+            &hex[0..2], // v2: check scheme+reserved at [0:2)
             test_case.expected_header,
             "Header mismatch for URL: {} (expected {}, got {})",
             url,
             test_case.expected_header,
-            &hex[0..3]
+            &hex[0..2]
         );
     }
 }
@@ -129,7 +129,7 @@ fn test_port_encoding() {
         let sxurl_bytes = pack_sxurl(&components).unwrap();
         let hex = sxurl_to_hex(&sxurl_bytes);
 
-        let port_slice = &hex[30..34];
+        let port_slice = &hex[34..38]; // Correct v2 position for port
         assert_eq!(port_slice, expected_hex, "Port encoding mismatch for port {}", port);
     }
 }
@@ -194,17 +194,17 @@ fn test_empty_component_packing() {
     let sxurl_bytes = pack_sxurl(&components).unwrap();
     let hex = sxurl_to_hex(&sxurl_bytes);
 
-    // Empty subdomain should be zero (not hashed)
-    let subdomain_slice = &hex[22..30];
+    // Empty subdomain should be zero (not hashed) - correct v2 position [24:32)
+    let subdomain_slice = &hex[24..32];
     assert_eq!(subdomain_slice, "00000000");
 
-    // Empty params should be zero (not hashed)
-    let params_slice = &hex[49..58];
-    assert_eq!(params_slice, "000000000");
+    // Empty params should be zero (not hashed) - correct v2 position [51:59)
+    let params_slice = &hex[51..59];
+    assert_eq!(params_slice, "00000000");
 
-    // Empty fragment should be zero (not hashed)
-    let fragment_slice = &hex[58..64];
-    assert_eq!(fragment_slice, "000000");
+    // Empty fragment should be zero (not hashed) - correct v2 position [59:64)
+    let fragment_slice = &hex[59..64];
+    assert_eq!(fragment_slice, "00000");
 }
 
 #[test]
@@ -316,20 +316,21 @@ fn test_spec_compliance_exact() {
     // Test the exact spec example
     let url = "https://docs.rs/";
     let sxurl_hex = encode_url_to_hex(url).unwrap();
-    let expected = "1002397f4018b8efa86c310000000001bb98911d784580332000000000000000";
+    let expected = "004817c7e16ca8efb818406f000000000001bb35884d71189f90000000000000";
 
     assert_eq!(sxurl_hex, expected, "Must match spec exactly");
 
-    // Verify each component slice
+    // Verify each component slice for v2 format with corrected values
     let expected_slices = vec![
-        ("Header", 0, 3, "100"),
-        ("TLD", 3, 7, "2397"),
-        ("Domain", 7, 22, "f4018b8efa86c31"),
-        ("Subdomain", 22, 30, "00000000"),
-        ("Port", 30, 34, "01bb"),
-        ("Path", 34, 49, "98911d784580332"),
-        ("Params", 49, 58, "000000000"),
-        ("Fragment", 58, 64, "000000"),
+        ("Scheme+Reserved", 0, 2, "00"),
+        ("TLD", 2, 9, "4817c7e"),
+        ("Domain", 9, 24, "16ca8efb818406f"),
+        ("Subdomain", 24, 32, "00000000"),
+        ("Flags", 32, 34, "00"),
+        ("Port", 34, 38, "01bb"),
+        ("Path", 38, 51, "35884d71189f9"),
+        ("Params", 51, 59, "00000000"),
+        ("Fragment", 59, 64, "00000"),
     ];
 
     for (name, start, end, expected_value) in expected_slices {
@@ -357,44 +358,42 @@ fn test_flag_bits_exact() {
     let flag_tests = vec![
         FlagTest {
             url: "https://example.com/",
-            expected_flags_binary: "00000",
+            expected_flags_binary: "00000000", // v2: no flags set
             expected_flags_value: 0,
         },
         FlagTest {
             url: "https://api.example.com/",
-            expected_flags_binary: "10000",
-            expected_flags_value: 16,
+            expected_flags_binary: "10000000", // v2: bit 7 = subdomain
+            expected_flags_value: 128,
         },
         FlagTest {
             url: "https://example.com/?q=test",
-            expected_flags_binary: "01000",
-            expected_flags_value: 8,
+            expected_flags_binary: "00010000", // v2: bit 4 = query
+            expected_flags_value: 16,
         },
         FlagTest {
             url: "https://example.com/#section",
-            expected_flags_binary: "00100",
-            expected_flags_value: 4,
+            expected_flags_binary: "00001000", // v2: bit 3 = fragment
+            expected_flags_value: 8,
         },
         FlagTest {
             url: "https://example.com:8080/",
-            expected_flags_binary: "00010",
-            expected_flags_value: 2,
+            expected_flags_binary: "01000000", // v2: bit 6 = port
+            expected_flags_value: 64,
         },
         FlagTest {
             url: "https://api.example.com:8080/search?q=test#results",
-            expected_flags_binary: "11110",
-            expected_flags_value: 30,
+            expected_flags_binary: "11111000", // v2: bits 7,6,5,4,3 = sub,port,path,query,frag
+            expected_flags_value: 248,
         },
     ];
 
     for test in flag_tests {
         let sxurl_hex = encode_url_to_hex(test.url).unwrap();
-        let header_hex = &sxurl_hex[0..3];
-        let header_value = u16::from_str_radix(header_hex, 16).unwrap();
-
-        let flags = header_value & 0x1F; // Extract lower 5 bits
+        let flags_hex = &sxurl_hex[32..34]; // v2: flags are at [32:34]
+        let flags = u8::from_str_radix(flags_hex, 16).unwrap();
         assert_eq!(
-            flags as u8,
+            flags,
             test.expected_flags_value,
             "Flag value mismatch for {}: expected {}, got {}",
             test.url,

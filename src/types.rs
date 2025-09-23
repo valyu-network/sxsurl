@@ -3,8 +3,6 @@
 /// Information extracted from an SXURL header.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SxurlHeader {
-    /// SXURL format version (always 1 for current spec)
-    pub version: u16,
     /// URL scheme (https, http, or ftp)
     pub scheme: String,
     /// Whether subdomain is present
@@ -27,7 +25,6 @@ impl SxurlHeader {
         port_present: bool,
     ) -> Self {
         Self {
-            version: 1,
             scheme,
             sub_present,
             params_present,
@@ -56,34 +53,41 @@ impl SxurlHeader {
         }
     }
 
-    /// Pack header flags into a 16-bit value.
-    pub fn pack_flags(&self) -> u16 {
-        let mut flags = 0u16;
+    /// Pack header flags into an 8-bit value.
+    /// v2 flag positions: sub(7), port(6), path(5), params(4), frag(3), reserved(2:0)
+    pub fn pack_flags(&self, path_present: bool) -> u8 {
+        let mut flags = 0u8;
 
         if self.sub_present {
-            flags |= 1 << 0;
-        }
-        if self.params_present {
-            flags |= 1 << 1;
-        }
-        if self.frag_present {
-            flags |= 1 << 2;
+            flags |= 1 << 7;  // bit 7
         }
         if self.port_present {
-            flags |= 1 << 3;
+            flags |= 1 << 6;  // bit 6
         }
+        if path_present {
+            flags |= 1 << 5;  // bit 5
+        }
+        if self.params_present {
+            flags |= 1 << 4;  // bit 4
+        }
+        if self.frag_present {
+            flags |= 1 << 3;  // bit 3
+        }
+        // bits 2, 1, 0 are reserved
 
         flags
     }
 
-    /// Unpack header flags from a 16-bit value.
-    pub fn unpack_flags(flags: u16) -> (bool, bool, bool, bool) {
-        let sub_present = (flags & (1 << 0)) != 0;
-        let params_present = (flags & (1 << 1)) != 0;
-        let frag_present = (flags & (1 << 2)) != 0;
-        let port_present = (flags & (1 << 3)) != 0;
+    /// Unpack header flags from an 8-bit value.
+    /// v2 flag positions: sub(7), port(6), path(5), params(4), frag(3), reserved(2:0)
+    pub fn unpack_flags(flags: u8) -> (bool, bool, bool, bool, bool) {
+        let sub_present = (flags & (1 << 7)) != 0;
+        let port_present = (flags & (1 << 6)) != 0;
+        let path_present = (flags & (1 << 5)) != 0;
+        let params_present = (flags & (1 << 4)) != 0;
+        let frag_present = (flags & (1 << 3)) != 0;
 
-        (sub_present, params_present, frag_present, port_present)
+        (sub_present, port_present, path_present, params_present, frag_present)
     }
 }
 
@@ -194,7 +198,6 @@ mod tests {
             false, // no port
         );
 
-        assert_eq!(header.version, 1);
         assert_eq!(header.scheme, "https");
         assert!(header.sub_present);
         assert!(!header.params_present);
@@ -219,6 +222,38 @@ mod tests {
         assert_eq!(SxurlHeader::scheme_from_code(1), Some("http".to_string()));
         assert_eq!(SxurlHeader::scheme_from_code(2), Some("ftp".to_string()));
         assert_eq!(SxurlHeader::scheme_from_code(3), None);
+    }
+
+    #[test]
+    fn test_v2_flag_packing() {
+        let header = SxurlHeader::new(
+            "https".to_string(),
+            true,  // subdomain present
+            true,  // params present
+            false, // no fragment
+            true,  // port present
+        );
+
+        // Test flag packing with path present
+        let flags = header.pack_flags(true);
+
+        // Expected: sub(7)=1, port(6)=1, path(5)=1, params(4)=1, frag(3)=0
+        // Binary: 11110000 = 0xF0
+        assert_eq!(flags, 0xF0, "Expected flags 0xF0, got 0x{:02x}", flags);
+
+        // Test flag unpacking
+        let (sub, port, path, params, frag) = SxurlHeader::unpack_flags(flags);
+        assert!(sub, "Subdomain flag should be set");
+        assert!(port, "Port flag should be set");
+        assert!(path, "Path flag should be set");
+        assert!(params, "Params flag should be set");
+        assert!(!frag, "Fragment flag should not be set");
+
+        println!("✓ v2 flag packing verified:");
+        println!("  Input: sub={}, port={}, path={}, params={}, frag={}",
+                 header.sub_present, header.port_present, true, header.params_present, header.frag_present);
+        println!("  Packed: 0x{:02x}", flags);
+        println!("  Unpacked: sub={}, port={}, path={}, params={}, frag={}", sub, port, path, params, frag);
     }
 
     #[test]

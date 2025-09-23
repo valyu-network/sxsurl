@@ -39,33 +39,39 @@ pub fn pack_sxurl(components: &UrlComponents) -> Result<[u8; 32], SxurlError> {
         ComponentHasher::hash_fragment(&components.fragment)?
     };
 
-    // Create header according to SXURL.md specification
+    // Create scheme code according to v2 specification
     let scheme_code = match components.scheme.as_str() {
-        "https" => 0u64,
-        "http" => 1u64,
-        "ftp" => 2u64,
+        "https" => 0u8,
+        "http" => 1u8,
+        "ftp" => 2u8,
         _ => return Err(SxurlError::InvalidScheme),
     };
 
-    // Build flags (5 bits): sub_present(4), params_present(3), frag_present(2), port_present(1), reserved(0)
+    // Build flags (8 bits): sub(7), port(6), path(5), params(4), frag(3), reserved(2:0)
+    let path_present = !components.path.is_empty() && components.path != "/";
+    let port_present = components.port != get_default_port(&components.scheme);
+
     let flags =
-        (if !components.subdomain.is_empty() { 1u64 } else { 0u64 }) << 4 |
-        (if !components.query.is_empty() { 1u64 } else { 0u64 }) << 3 |
-        (if !components.fragment.is_empty() { 1u64 } else { 0u64 }) << 2 |
-        (if components.port != get_default_port(&components.scheme) { 1u64 } else { 0u64 }) << 1;
-        // bit 0 is reserved and always 0
+        (if !components.subdomain.is_empty() { 1u8 } else { 0u8 }) << 7 |
+        (if port_present { 1u8 } else { 0u8 }) << 6 |
+        (if path_present { 1u8 } else { 0u8 }) << 5 |
+        (if !components.query.is_empty() { 1u8 } else { 0u8 }) << 4 |
+        (if !components.fragment.is_empty() { 1u8 } else { 0u8 }) << 3;
+        // bits 2, 1, 0 are reserved and always 0
 
-    // Build header: version(4 bits) + scheme(3 bits) + flags(5 bits) = 12 bits total
-    let header_value = (1u64 << 8) | (scheme_code << 5) | flags;
-
-    // Build hex string by concatenating each component in proper hex format
+    // Build hex string by concatenating each component in v2 format
     let mut hex_string = String::with_capacity(64);
 
-    // Header: 3 hex chars (12 bits)
-    hex_string.push_str(&format!("{:03x}", header_value));
+    // v2 format: scheme(1) + reserved(1) + tld(7) + domain(15) + sub(8) + flags(2) + port(4) + path(13) + query(8) + frag(5)
 
-    // TLD hash: 4 hex chars (16 bits)
-    hex_string.push_str(&format!("{:04x}", tld_hash));
+    // Scheme: 1 hex char (4 bits)
+    hex_string.push_str(&format!("{:01x}", scheme_code));
+
+    // Reserved: 1 hex char (4 bits) - always 0
+    hex_string.push_str("0");
+
+    // TLD hash: 7 hex chars (28 bits)
+    hex_string.push_str(&format!("{:07x}", tld_hash));
 
     // Domain hash: 15 hex chars (60 bits)
     hex_string.push_str(&format!("{:015x}", domain_hash));
@@ -73,17 +79,20 @@ pub fn pack_sxurl(components: &UrlComponents) -> Result<[u8; 32], SxurlError> {
     // Subdomain hash: 8 hex chars (32 bits)
     hex_string.push_str(&format!("{:08x}", subdomain_hash));
 
+    // Flags: 2 hex chars (8 bits)
+    hex_string.push_str(&format!("{:02x}", flags));
+
     // Port: 4 hex chars (16 bits)
     hex_string.push_str(&format!("{:04x}", components.port));
 
-    // Path hash: 15 hex chars (60 bits)
-    hex_string.push_str(&format!("{:015x}", path_hash));
+    // Path hash: 13 hex chars (52 bits)
+    hex_string.push_str(&format!("{:013x}", path_hash));
 
-    // Params hash: 9 hex chars (36 bits)
-    hex_string.push_str(&format!("{:09x}", params_hash));
+    // Query hash: 8 hex chars (32 bits)
+    hex_string.push_str(&format!("{:08x}", params_hash));
 
-    // Fragment hash: 6 hex chars (24 bits)
-    hex_string.push_str(&format!("{:06x}", fragment_hash));
+    // Fragment hash: 5 hex chars (20 bits)
+    hex_string.push_str(&format!("{:05x}", fragment_hash));
 
     // Verify we have exactly 64 hex characters
     if hex_string.len() != 64 {
@@ -94,6 +103,97 @@ pub fn pack_sxurl(components: &UrlComponents) -> Result<[u8; 32], SxurlError> {
     hex_to_sxurl(&hex_string)
 }
 
+/// Pack URL components into SXURL format using pre-computed hash values.
+///
+/// This function is optimized for cases where hash values have already been computed,
+/// avoiding duplicate hashing operations. Used internally for efficient encoding
+/// of both domain and full SXURLs.
+///
+/// # Arguments
+///
+/// * `components` - The URL components (for metadata like scheme, port)
+/// * `tld_hash` - Pre-computed TLD hash
+/// * `domain_hash` - Pre-computed domain hash
+/// * `subdomain_hash` - Pre-computed subdomain hash
+/// * `path_hash` - Pre-computed path hash
+/// * `params_hash` - Pre-computed params hash
+/// * `fragment_hash` - Pre-computed fragment hash
+///
+/// # Returns
+///
+/// Returns the SXURL as a 32-byte array.
+pub fn pack_sxurl_with_hashes(
+    components: &UrlComponents,
+    tld_hash: u64,
+    domain_hash: u64,
+    subdomain_hash: u64,
+    path_hash: u64,
+    params_hash: u64,
+    fragment_hash: u64,
+) -> Result<[u8; 32], SxurlError> {
+    // Create scheme code according to v2 specification
+    let scheme_code = match components.scheme.as_str() {
+        "https" => 0u8,
+        "http" => 1u8,
+        "ftp" => 2u8,
+        _ => return Err(SxurlError::InvalidScheme),
+    };
+
+    // Build flags (8 bits): sub(7), port(6), path(5), params(4), frag(3), reserved(2:0)
+    let path_present = !components.path.is_empty() && components.path != "/";
+    let port_present = components.port != get_default_port(&components.scheme);
+
+    let flags =
+        (if !components.subdomain.is_empty() { 1u8 } else { 0u8 }) << 7 |
+        (if port_present { 1u8 } else { 0u8 }) << 6 |
+        (if path_present { 1u8 } else { 0u8 }) << 5 |
+        (if !components.query.is_empty() { 1u8 } else { 0u8 }) << 4 |
+        (if !components.fragment.is_empty() { 1u8 } else { 0u8 }) << 3;
+        // bits 2, 1, 0 are reserved and always 0
+
+    // Build hex string by concatenating each component in v2 format
+    let mut hex_string = String::with_capacity(64);
+
+    // v2 format: scheme(1) + reserved(1) + tld(7) + domain(15) + sub(8) + flags(2) + port(4) + path(13) + query(8) + frag(5)
+
+    // Scheme: 1 hex char (4 bits)
+    hex_string.push_str(&format!("{:01x}", scheme_code));
+
+    // Reserved: 1 hex char (4 bits) - always 0
+    hex_string.push_str("0");
+
+    // TLD hash: 7 hex chars (28 bits)
+    hex_string.push_str(&format!("{:07x}", tld_hash));
+
+    // Domain hash: 15 hex chars (60 bits)
+    hex_string.push_str(&format!("{:015x}", domain_hash));
+
+    // Subdomain hash: 8 hex chars (32 bits)
+    hex_string.push_str(&format!("{:08x}", subdomain_hash));
+
+    // Flags: 2 hex chars (8 bits)
+    hex_string.push_str(&format!("{:02x}", flags));
+
+    // Port: 4 hex chars (16 bits)
+    hex_string.push_str(&format!("{:04x}", components.port));
+
+    // Path hash: 13 hex chars (52 bits)
+    hex_string.push_str(&format!("{:013x}", path_hash));
+
+    // Query hash: 8 hex chars (32 bits)
+    hex_string.push_str(&format!("{:08x}", params_hash));
+
+    // Fragment hash: 5 hex chars (20 bits)
+    hex_string.push_str(&format!("{:05x}", fragment_hash));
+
+    // Verify we have exactly 64 hex characters
+    if hex_string.len() != 64 {
+        return Err(SxurlError::InternalError);
+    }
+
+    // Convert hex string to bytes
+    hex_to_sxurl(&hex_string)
+}
 
 /// Get the default port for a scheme.
 fn get_default_port(scheme: &str) -> u16 {
@@ -167,8 +267,8 @@ mod tests {
         let hex = sxurl_to_hex(&sxurl);
         assert_eq!(hex.len(), 64);
 
-        // For HTTPS with no flags, header should start with "100"
-        assert!(hex.starts_with("100"), "HTTPS with no flags should start with '100', got: {}", &hex[0..3]);
+        // For HTTPS (scheme=0) + reserved(0) should start with "00"
+        assert!(hex.starts_with("00"), "HTTPS v2 should start with '00', got: {}", &hex[0..2]);
 
         println!("SXURL for https://example.com/: {}", hex);
     }
@@ -192,9 +292,62 @@ mod tests {
         let sxurl = result.unwrap();
         let hex = sxurl_to_hex(&sxurl);
 
-        // For HTTPS with params present, header should start with "108"
-        assert!(hex.starts_with("108"), "HTTPS with params should start with '108', got: {}", &hex[0..3]);
+        // For HTTPS with params present: scheme=0, reserved=0, then TLD hash starts
+        // Flags will be at position 32 hex chars in with params flag (bit 4) set
+        assert!(hex.starts_with("00"), "HTTPS v2 should start with '00', got: {}", &hex[0..2]);
 
         println!("SXURL for https://google.com/search?q=test: {}", hex);
+    }
+
+    #[test]
+    fn test_v2_format_positions() {
+        let components = UrlComponents::new(
+            "http".to_string(),    // scheme = 1
+            "com".to_string(),     // TLD
+            "example".to_string(),  // domain
+            "api".to_string(),     // subdomain (present)
+            8080,                  // port (non-default)
+            "/v1/users".to_string(), // path (present)
+            "limit=10".to_string(), // query (present)
+            "section1".to_string(), // fragment (present)
+        );
+
+        let result = pack_sxurl(&components);
+        assert!(result.is_ok());
+
+        let hex = sxurl_to_hex(&result.unwrap());
+        assert_eq!(hex.len(), 64);
+
+        println!("✓ v2 format test:");
+        println!("  Full SXURL: {}", hex);
+        println!("  Positions breakdown:");
+        println!("    [0:1]   Scheme:    {} (http=1)", &hex[0..1]);
+        println!("    [1:2]   Reserved:  {} (always 0)", &hex[1..2]);
+        println!("    [2:9]   TLD:       {} (28-bit)", &hex[2..9]);
+        println!("    [9:24]  Domain:    {} (60-bit)", &hex[9..24]);
+        println!("    [24:32] Subdomain: {} (32-bit)", &hex[24..32]);
+        println!("    [32:34] Flags:     {} (8-bit)", &hex[32..34]);
+        println!("    [34:38] Port:      {} (16-bit)", &hex[34..38]);
+        println!("    [38:51] Path:      {} (52-bit)", &hex[38..51]);
+        println!("    [51:59] Query:     {} (32-bit)", &hex[51..59]);
+        println!("    [59:64] Fragment:  {} (20-bit)", &hex[59..64]);
+
+        // Verify scheme
+        assert_eq!(&hex[0..1], "1", "HTTP scheme should be 1");
+
+        // Verify reserved
+        assert_eq!(&hex[1..2], "0", "Reserved should be 0");
+
+        // Verify port encoding (8080 = 0x1F90)
+        assert_eq!(&hex[34..38], "1f90", "Port 8080 should encode as 1f90");
+
+        // Parse flags manually: sub(7)=1, port(6)=1, path(5)=1, params(4)=1, frag(3)=1 = 0xF8
+        let flags_hex = &hex[32..34];
+        let flags = u8::from_str_radix(flags_hex, 16).unwrap();
+        assert_eq!(flags & 0x80, 0x80, "Subdomain flag should be set");
+        assert_eq!(flags & 0x40, 0x40, "Port flag should be set");
+        assert_eq!(flags & 0x20, 0x20, "Path flag should be set");
+        assert_eq!(flags & 0x10, 0x10, "Params flag should be set");
+        assert_eq!(flags & 0x08, 0x08, "Fragment flag should be set");
     }
 }
