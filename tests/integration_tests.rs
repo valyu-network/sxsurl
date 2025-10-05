@@ -6,13 +6,13 @@ use sxurl::*;
 
 #[test]
 fn test_spec_hash_vectors() {
-    // Test all hash vectors for v2 spec with corrected hash extraction
+    // Test all hash vectors for v2 spec with corrected labels
     assert_eq!(ComponentHasher::hash_tld("rs").unwrap(), 0x4817c7e); // 28-bit
     assert_eq!(ComponentHasher::hash_domain("docs").unwrap(), 0x16ca8efb818406f); // 60-bit
-    assert_eq!(ComponentHasher::hash_subdomain("").unwrap(), 0xa2921b44); // 32-bit
+    assert_eq!(ComponentHasher::hash_subdomain("").unwrap(), 0x989781e3); // 32-bit with label "subdomain"
     assert_eq!(ComponentHasher::hash_path("/").unwrap(), 0x35884d71189f9); // 52-bit (v2)
-    assert_eq!(ComponentHasher::hash_params("").unwrap(), 0x1c6130c3); // 32-bit (v2)
-    assert_eq!(ComponentHasher::hash_fragment("").unwrap(), 0x676a0); // 20-bit (v2)
+    assert_eq!(ComponentHasher::hash_params("").unwrap(), 0x6b4de8c2); // 32-bit (v2) with label "query"
+    assert_eq!(ComponentHasher::hash_fragment("").unwrap(), 0x22060); // 20-bit (v2) with label "fragment"
 }
 
 #[test]

@@ -71,7 +71,7 @@ impl ComponentHasher {
 
     /// Hash subdomain component (32 bits).
     pub fn hash_subdomain(subdomain: &str) -> Result<u64, SxurlError> {
-        hash_component("sub", subdomain.as_bytes(), 32)
+        hash_component("subdomain", subdomain.as_bytes(), 32)
     }
 
     /// Hash path component (52 bits).
@@ -81,12 +81,12 @@ impl ComponentHasher {
 
     /// Hash query parameters component (32 bits).
     pub fn hash_params(params: &str) -> Result<u64, SxurlError> {
-        hash_component("params", params.as_bytes(), 32)
+        hash_component("query", params.as_bytes(), 32)
     }
 
     /// Hash fragment component (20 bits).
     pub fn hash_fragment(fragment: &str) -> Result<u64, SxurlError> {
-        hash_component("frag", fragment.as_bytes(), 20)
+        hash_component("fragment", fragment.as_bytes(), 20)
     }
 }
 

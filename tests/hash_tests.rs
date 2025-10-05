@@ -72,7 +72,7 @@ fn test_component_hasher_determinism() {
     for _ in 0..10 {
         assert_eq!(ComponentHasher::hash_tld("rs").unwrap(), 0x4817c7e);
         assert_eq!(ComponentHasher::hash_domain("docs").unwrap(), 0x16ca8efb818406f);
-        assert_eq!(ComponentHasher::hash_subdomain("").unwrap(), 0xa2921b44);
+        assert_eq!(ComponentHasher::hash_subdomain("").unwrap(), 0x989781e3);
     }
 }
 
@@ -107,10 +107,10 @@ fn test_all_spec_hash_values() {
     let test_cases = [
         TestCase { label: "tld", data: "rs", bits: 28, expected: 0x4817c7e },
         TestCase { label: "domain", data: "docs", bits: 60, expected: 0x16ca8efb818406f },
-        TestCase { label: "sub", data: "", bits: 32, expected: 0xa2921b44 },
+        TestCase { label: "subdomain", data: "", bits: 32, expected: 0x989781e3 },
         TestCase { label: "path", data: "/", bits: 52, expected: 0x35884d71189f9 },
-        TestCase { label: "params", data: "", bits: 32, expected: 0x1c6130c3 },
-        TestCase { label: "frag", data: "", bits: 20, expected: 0x676a0 },
+        TestCase { label: "query", data: "", bits: 32, expected: 0x6b4de8c2 },
+        TestCase { label: "fragment", data: "", bits: 20, expected: 0x22060 },
     ];
 
     for test_case in &test_cases {
@@ -135,10 +135,10 @@ fn test_empty_string_hashes() {
     let empty_params = ComponentHasher::hash_params("").unwrap();
     let empty_frag = ComponentHasher::hash_fragment("").unwrap();
 
-    // These should be the corrected values with fixed hash extraction
-    assert_eq!(empty_sub, 0xa2921b44);
-    assert_eq!(empty_params, 0x1c6130c3); // 32-bit hash in v2
-    assert_eq!(empty_frag, 0x676a0); // 20-bit hash in v2
+    // These should be the corrected values with fixed labels
+    assert_eq!(empty_sub, 0x989781e3);
+    assert_eq!(empty_params, 0x6b4de8c2); // 32-bit hash in v2 with label "query"
+    assert_eq!(empty_frag, 0x22060); // 20-bit hash in v2 with label "fragment"
 
     // They should be different from each other (different labels)
     assert_ne!(empty_sub, empty_params);
